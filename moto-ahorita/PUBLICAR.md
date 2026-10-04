@@ -5,7 +5,9 @@
 ## Archivos
 | Archivo | Para qué |
 |---|---|
-| `dist/asisa_ahorita.mp4` | video final (1080×1920, 30 fps, audio incluido) |
+| `dist/asisa_ahorita_v2.mp4` | **video recomendado** (mismo video, audio mejorado con muestras reales CC0) |
+| `dist/asisa_ahorita.mp4` | primera versión (audio 100 % sintetizado) |
+| `sonidos/` | muestras CC0 usadas (paquete `uisfx`); `assets/mix_audio.py` las mezcla |
 | `dist/anim.html` | animación autocontenida (se abre en cualquier navegador; espacio = pausa, M = sonido) |
 | `cover.jpg` | portada sugerida |
 | `src/` | código editable (`index.html` tiene el bloque `CONFIG` con teléfono, horario y dirección) |

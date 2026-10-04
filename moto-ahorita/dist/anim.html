@@ -1339,6 +1339,8 @@ function frame(c, T, noPost) {
 }
 
 /* ------------------------------------------------ partitura (todo sintetizado) */
+// Modo "lite" (?lite): quita los efectos sintéticos que se reemplazan por muestras reales CC0 (assets/mix_audio.py)
+if (/[?&]lite\b/.test(location.search)) { for (const n of ['stamp', 'clank', 'shing', 'powerUp', 'coin', 'bell']) window[n] = () => {}; }
 const SCORE = Score({ bpm: CONFIG.bpm }, ({ at, sc, steps, drums, groove, motif, BEAT, STEP }) => {
   // — GANCHO: cuarto en silencio, tic-tac y "tecleo" de la burbuja
   sc('hook', 0, (G, w) => { ambience(G, w, 2.2, 360, .03, 0); stamp(G, w, .5); boom(G, w, .3); });

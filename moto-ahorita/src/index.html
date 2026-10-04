@@ -1,0 +1,407 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AHORITA · Asisa Motors</title>
+<style>
+  @font-face { font-family: 'Anton'; font-weight: 400; src: url("npm:@fontsource/anton/files/anton-latin-400-normal.woff2") format('woff2'); }
+  @font-face { font-family: 'Inter'; font-weight: 800; src: url("npm:@fontsource/inter/files/inter-latin-800-normal.woff2") format('woff2'); }
+  @font-face { font-family: 'Inter'; font-weight: 600; src: url("npm:@fontsource/inter/files/inter-latin-600-normal.woff2") format('woff2'); }
+  html, body { margin: 0; height: 100%; background: #05070d; overflow: hidden; }
+  #cv { display: block; }
+  #hint { position: fixed; bottom: 10px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,.6); color: #ccc; font: 12px system-ui; padding: 6px 12px; border-radius: 6px; transition: opacity .8s; }
+  body.hint-off #hint, body.rec #hint { opacity: 0; }
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+<div id="hint">ESPACIO pausa · ←/→ buscar · R reinicio · M / clic sonido</div>
+<script src="@engine/stage-core.js"></script>
+<script src="@engine/audio-core.js"></script>
+<script src="./logo.js"></script>
+<script src="./moto.js"></script>
+<script src="./lib.js"></script>
+<script>
+/* =====================================================================
+   "AHORITA" · Asisa Motors · 20 s · 9:16 · 120 BPM (1 tiempo = 0.5 s, 1 compás = 2 s)
+   Idea: una moto vieja con un ojo-faro muy expresivo, harta del "ahorita la arreglo".
+   El problema (la palabra "ahorita") se convierte en la llamada a la acción:
+   "LLÁMANOS AHORITA". El final empalma con el inicio → bucle.
+
+   0.0–2.0   GANCHO    crash zoom out desde el ojo gigante (0–0.5). Moto vieja mira a cámara. Texto desde el cuadro 0: TU MOTO CUANDO DICES: + burbuja
+                       del dueño “Ahorita la arreglo”. Parpadeo lento, suspiro por el escape, ojos en blanco.
+   2.0–6.0   ABANDONO  AHORITA (slam, 2.0) + contador 1 MES · 6 MESES · 1 AÑO · 3 AÑOS (2.5/3.5/4.5/5.5).
+                       Time-lapse: día/noche ×4, reloj girando, polvo, llanta baja, planta en el escape,
+                       nido con huevos (4.0/4.45). Subtítulo de la moto: “…ahorita.” (5.2)
+   6.0–10.0  LLEGADA   6.0 silencio + ojos como platos, motor lejano. 6.775 barrido de marca (rojo/blanco/azul)
+                       → 7.0 entra la moto roja derrapando. 7.5 SÍ HAY MOTOS (slam). 8.0 “¿Y ella?”.
+                       8.5 caballito + empuje de cámara.
+   10.0–14.0 REFACCIONES  SÍ HAY REFACCIONES (10.25). Piezas nuevas encajan en tiempo fuerte:
+                       rueda del. 10.5 · rueda tras. 11.0 · espejo 11.5 · asiento 12.0 · cadena 12.5.
+                       13.0 barrido de brillo: la moto se vuelve azul de marca. 13.5 ojo feliz + salto.
+   14.0–20.0 CIERRE    logo sting (14.0) · dos motos frente a frente (14.5) · MOTOS · REFACCIONES (15.2)
+                       dirección + horario (15.8) · LLÁMANOS AHORITA (16.5) · 477 181 78 23 (17.0)
+                       19.6 empuje que empata con el cuadro 0 (loop).
+   ===================================================================== */
+const CONFIG = {
+  // — editar aquí: textos, contacto y tiempos de la pieza —
+  bpm: 120, phone: '477 181 78 23', hours: 'LUN–SÁB · 9 AM – 6 PM',
+  addr1: 'C. 16 de Septiembre 631', addr2: 'Obregón, León, Gto.',
+};
+const WIPES = [6.775, 9.775, 13.775], WD = .45;       // barridos de marca (centro = +.225 → 7.0, 10.0, 14.0)
+const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+
+/* ------------------------------------------------ utilidades de tiempo */
+const blink = (T, list) => { let b = 0; for (const t0 of list) { const d = T - t0; if (d > 0 && d < .16) b = Math.max(b, Math.sin(d / .16 * Math.PI)); } return b; };
+const BL = [1.2, 3.2, 5.3, 8.9, 12.7, 15.2, 18.1];
+const lerpA = (a, b, k) => a.map((v, i) => lerp(v, b[i], k));
+function shadowAt(c, x, y, w, a = .4) { c.save(); c.fillStyle = `rgba(2,6,18,${a})`; c.beginPath(); c.ellipse(x, y + 6, w * .5, w * .06, 0, 0, TAU); c.fill(); c.fillStyle = `rgba(2,6,18,${a * .6})`; c.beginPath(); c.ellipse(x, y + 6, w * .36, w * .035, 0, 0, TAU); c.fill(); c.restore(); }
+const L2W = (o, lx, ly) => [o.x + (o.flip ? -1 : 1) * o.s * lx, o.y + o.s * (ly - 30)];
+
+/* ------------------------------------------------ moto vieja (protagonista) */
+const OLD_BEATS = { fw: 10.5, rw: 11.0, mir: 11.5, seat: 12.0, chain: 12.5, sweep: 13.0, sweepD: .45 };
+function oldPose(T) {
+  const lap = T >= 7 && T < 10;
+  if (T >= 14) return { x: 730, y: 735, s: 2.2, flip: true };
+  if (lap) return { x: 270, y: GROUND, s: 3.3, flip: false };
+  if (T >= 10) return { x: 470, y: GROUND, s: 4.7, flip: false };
+  return { x: 480, y: GROUND, s: 4.5, flip: false };
+}
+function oldEye(T) {
+  const e = { lid: .46, tilt: .05, look: [noise1(T * .6, 1) * .12, noise1(T * .5, 2) * .08], bags: 1, brow: [.1, -.15], glow: 0, wide: 0, pupil: .44, happy: 0, smile: 0 };
+  if (T < 2.1) {
+    if (T < 1.45) { const g = track([[0, [0, 0]], [.4, [0, 0]], [.55, [.75, .12], E.outC], [.95, [.75, .12]], [1.08, [-.35, 0], E.outC], [1.35, [0, 0], E.inOutC]])(T); e.look = [g[0] + e.look[0] * .3, g[1] + e.look[1] * .3]; }
+    if (T >= 1.45) { const k = inv(1.45, 2.1, T), a = lerp(Math.PI, TAU, E.inOutSine(k)), w = E.outC(inv(0, .15, k)) * (1 - E.inC(inv(.85, 1, k))); e.look = [Math.cos(a) * .85 * w, Math.sin(a) * .85 * w - .05]; e.lid = lerp(.46, .26, w); e.brow = [.1 - .35 * w, -.15 + .8 * w]; }
+  } else if (T < 6.4) {
+    e.lid = lerp(.46, .64, inv(2, 5.5, T)); e.bags = 1;
+    const tr = track([[2, [0, 0]], [4.1, [0, 0]], [4.28, [-.95, -.1], E.outC], [4.95, [-.95, -.1]], [5.12, [0, 0], E.outC]])(T); e.look = [tr[0] + e.look[0] * .3, tr[1] + e.look[1] * .3];
+    e.brow = [.14, -.2];
+  } else if (T < 8.0) {
+    const k = E.outC(inv(6.4, 6.55, T)); e.lid = lerp(.64, -.02, k); e.wide = k; e.pupil = lerp(.44, .26, k); e.look = [lerp(e.look[0], 1, k) + shake(T, .03, 3, 30).x, lerp(e.look[1], -.05, k)]; e.brow = [0, lerp(-.2, .9, k)]; e.bags = 1 - k * .5;
+  } else if (T < 10.0) {
+    const k = E.outC(inv(8.0, 8.3, T)); e.lid = lerp(-.02, .34, k); e.wide = (1 - k) * .6; e.pupil = lerp(.26, .42, k); e.brow = [lerp(0, -.2, k), lerp(.9, .35, k)]; e.bags = .6;
+    const lk = track([[8.0, [1, -.05]], [8.5, [1, -.05]], [8.7, [1, -.7], E.outC], [9.4, [1, -.7]], [9.6, [.2, 0], E.outC]])(T); e.look = lk;
+  } else if (T < 13.0) {
+    const hope = inv(10.0, 12.6, T); e.lid = lerp(.34, 0, E.outC(inv(10, 10.6, T))); e.pupil = .46; e.brow = [-.08, .55]; e.bags = lerp(.6, .1, hope); e.glow = .15 + .55 * hope; e.look = [noise1(T * 1.5, 4) * .15, -.1 + noise1(T, 5) * .1];
+    const pops = [10.5, 11, 11.5, 12, 12.5].map(t => impulse(T, t, 9)); const pk = Math.max(...pops); e.wide = pk * .5; e.pupil = lerp(.46, .3, pk);
+  } else {
+    const k = E.outC(inv(13.0, 13.45, T)); e.lid = 0; e.bags = lerp(.1, 0, k); e.happy = k; e.smile = k; e.glow = lerp(.7, .95, k); e.brow = [0, lerp(.55, .8, k)]; e.pupil = .46; e.look = [0, 0];
+  }
+  const b = blink(T, BL); if (b > 0) e.lid = Math.max(e.lid, b * 1.02);
+  return e;
+}
+function oldDecay(T) {
+  return { dust: lerp(.14, .85, inv(2.2, 5.6, T)), nest: inv(4.0, 4.5, T), sprout: inv(3.0, 5.2, T), sag: E.inOutSine(inv(3.2, 5.0, T)) };
+}
+function drawOldMoto(c, T) {
+  const P = oldPose(T), dc = oldDecay(T), B = OLD_BEATS;
+  const parts = { fw: T >= B.fw, rw: T >= B.rw, mir: T >= B.mir, seat: T >= B.seat, chain: T >= B.chain };
+  const isCTA = T >= 14;
+  // respiración / rebote
+  const breathe_ = 1 + Math.sin(T * 2.2) * .008;
+  let sq = [1 / Math.sqrt(breathe_), breathe_], bob = 0;
+  // motor que tose al compás (gancho)
+  if (T < 2.2) for (const t of [0, .5, 1.0, 1.55]) { const k = impulse(T, t, 13); sq = [sq[0] * (1 + .014 * k), sq[1] * (1 - .02 * k)]; bob -= 1.6 * k; }
+  // clic de cada pieza: pequeño squash
+  for (const t of [B.fw, B.rw, B.mir, B.seat, B.chain]) { const k = impulse(T, t, 11); sq = [sq[0] * (1 + .03 * k), sq[1] * (1 - .045 * k)]; }
+  // salto de felicidad
+  if (T >= 13.45 && T < 14) { const k = (T - 13.45) / .5; bob = -Math.sin(Math.PI * k) * 10; }
+  // temblor de motor lejano antes de la llegada
+  const trem = T > 6.5 && T < 7 ? shake(T, 2.4 * inv(6.5, 6.9, T), 9, 40) : { x: 0, y: 0 };
+  const sagNow = parts.rw ? 0 : dc.sag;
+  const o = { ...P, x: P.x + trem.x, y: P.y + trem.y, sq, bob, ang: { f: 0, r: 0 }, sag: sagNow, parts, eye: oldEye(T) };
+  if (T >= 14) { o.eye = { lid: 0, bags: 0, happy: 1, smile: 1, glow: .95, look: [.4, 0], brow: [0, .8], pupil: .46 }; const bk = blink(T, [18.0, 18.2]); if (bk > 0) { o.eye.lid = bk; o.eye.happy = 1 - bk; } }
+  // ruedas que giran al encajar
+  const spin = t => E.outQuart(inv(t, t + .7, T)) * 9;
+  o.ang = { f: parts.fw ? spin(B.fw) : 0, r: parts.rw ? spin(B.rw) : 0 };
+  const swp = clamp(inv(B.sweep, B.sweep + B.sweepD, T));
+  const mkDeco = (T_) => (cc) => { sprout(cc, dc.sprout, T_); nest(cc, dc.nest, T_); eggs(cc, T_, 4.45); for (const [t0, sd] of [[0, 11], [.5, 12], [1.0, 13], [1.55, 3]]) puffs(cc, T_, t0, -96, -8, t0 === 1.55 ? 7 : 3, t0 === 1.55 ? 1.0 : .7, -22, -34, t0 === 1.55 ? 5 : 3.4, '#cfd6e2', sd); };
+  const oldSkin = { ...MOTO.SKINS.old, dust: dc.dust };
+  if (!isCTA) shadowAt(c, o.x + 8, P.y, 190 * P.s, .38);
+  const draw1 = (skin, deco, extra = {}) => MOTO.draw(c, { ...o, skin, deco, ...extra });
+  if (T < B.sweep) draw1(oldSkin, mkDeco(T));
+  else if (swp < 1) {
+    // barrido: izquierda = azul nuevo, derecha = vieja (diagonal)
+    const lxs = lerp(-115, 105, E.inOutC(swp)), [wx, wy] = L2W(o, lxs, 0), slant = 60 * o.s;
+    const poly = (left) => { c.beginPath(); const X = wx, Y0 = o.y - 200 * o.s, Y1 = o.y + 40; if (left) { c.moveTo(-2000, Y0); c.lineTo(X + slant, Y0); c.lineTo(X - slant, Y1); c.lineTo(-2000, Y1); } else { c.moveTo(3000, Y0); c.lineTo(X + slant, Y0); c.lineTo(X - slant, Y1); c.lineTo(3000, Y1); } c.closePath(); };
+    c.save(); poly(o.flip); c.clip(); draw1(oldSkin, mkDeco(T)); c.restore();
+    c.save(); poly(!o.flip); c.clip(); draw1(MOTO.SKINS.blue, null); c.restore();
+    // línea de brillo
+    c.save(); c.strokeStyle = 'rgba(255,255,255,.95)'; c.lineWidth = 8; c.shadowColor = '#bfe4ff'; c.shadowBlur = 26; c.beginPath(); c.moveTo(wx + slant, o.y - 200 * o.s); c.lineTo(wx - slant, o.y + 40); c.stroke(); c.restore();
+  } else draw1(MOTO.SKINS.blue, null);
+  return o;
+}
+
+/* ------------------------------------------------ piezas que vuelan (refacciones) y piezas viejas que caen */
+function flightTo(T, tArr, S, Tp, dur = .5) {
+  const k = clamp((T - (tArr - dur)) / dur); if (T < tArr - dur || T >= tArr) return null;
+  const e = E.inOutC(k), mid = [(S[0] + Tp[0]) / 2, Math.min(S[1], Tp[1]) - 160];
+  const x = (1 - e) * (1 - e) * S[0] + 2 * (1 - e) * e * mid[0] + e * e * Tp[0], y = (1 - e) * (1 - e) * S[1] + 2 * (1 - e) * e * mid[1] + e * e * Tp[1];
+  return { x, y, k, e };
+}
+function drawFlyingParts(c, T, o) {
+  const B = OLD_BEATS, s = o.s, sk = MOTO.SKINS.blue;
+  let f;
+  if ((f = flightTo(T, B.fw, [1250, 380], L2W(o, 65, 0)))) { c.save(); c.translate(f.x, f.y); c.scale(s * lerp(1.7, 1, f.e), s * lerp(1.7, 1, f.e)); MOTO.wheel(c, 0, 0, (1 - f.k) * -14, sk, { isNew: true }); c.restore(); speedLines(c, T, f.y - 60, f.y + 60, 1, .25, 7, 6); }
+  if ((f = flightTo(T, B.rw, [-250, 420], L2W(o, -65, 0)))) { c.save(); c.translate(f.x, f.y); c.scale(s * lerp(1.7, 1, f.e), s * lerp(1.7, 1, f.e)); MOTO.wheel(c, 0, 0, (1 - f.k) * 14, sk, { isNew: true }); c.restore(); }
+  if ((f = flightTo(T, B.mir, [900, -100], L2W(o, 36, -97), .45))) { c.save(); c.translate(f.x, f.y); c.rotate((1 - f.e) * 5); const q = s * lerp(1.8, 1, f.e); c.scale(q, q); c.translate(-36, 97); MOTO.mirrorNew(c, sk); c.restore(); }
+  if ((f = flightTo(T, B.seat, [-150, 300], L2W(o, -44, -75), .45))) { c.save(); c.translate(f.x, f.y); c.rotate((1 - f.e) * -4); const q = s * lerp(1.8, 1, f.e); c.scale(q, q); c.translate(44, 75); c.fillStyle = '#10141c'; c.fill(MOTO.SH.pad); c.strokeStyle = 'rgba(255,255,255,.3)'; c.lineWidth = 1.2; c.stroke(MOTO.SH.pad); c.restore(); }
+  if ((f = flightTo(T, B.chain, [500, 1500], L2W(o, -42, 10), .45))) { c.save(); c.translate(f.x, f.y); c.rotate((1 - f.e) * 3); const q = s * lerp(1.8, 1, f.e); c.scale(q, q);
+    c.strokeStyle = '#e8edf5'; c.lineWidth = 3; c.setLineDash([2.2, 2]); c.beginPath(); c.roundRect(-24, -8, 48, 16, 8); c.stroke(); c.setLineDash([]);
+    c.fillStyle = '#c9d0db'; for (const x of [-18, 18]) { c.beginPath(); c.arc(x, 0, 6, 0, TAU); c.fill(); c.fillStyle = '#5b6370'; c.beginPath(); c.arc(x, 0, 2.2, 0, TAU); c.fill(); c.fillStyle = '#c9d0db'; } c.restore(); }
+  // aterrizajes: aro + chispas
+  for (const [t, [lx, ly]] of [[B.fw, [65, 0]], [B.rw, [-65, 0]], [B.mir, [36, -97]], [B.seat, [-44, -75]], [B.chain, [-42, 10]]]) { const [wx, wy] = L2W(o, lx, ly); ring(c, T, t, wx, wy, 110 * s / 4, .45, '#fff', 8); sparks(c, T, t, wx, wy, 8, .55, 90 * s / 4, Math.round(t * 7), '#fff'); }
+}
+function drawFallingOld(c, T, o) {
+  const B = OLD_BEATS, s = o.s;
+  const old = MOTO.SKINS.old;
+  const tA = B.fw; if (T >= tA && T < tA + 1.6) { const a = T - tA, [x0, y0] = L2W(o, 65, 0), x = x0 + 520 * a, ang = (x - x0) / (30 * s); c.save(); c.translate(x, y0 + 30 * s * 0 - (a < .25 ? Math.sin(a / .25 * Math.PI) * 60 : 0)); c.scale(s, s); MOTO.wheel(c, 0, 0, ang, old, { isNew: false, sag: .3 }); c.restore(); }
+  const tB = B.rw; if (T >= tB && T < tB + 1.6) { const a = T - tB, [x0, y0] = L2W(o, -65, 0), x = x0 - 520 * a, ang = (x - x0) / (30 * s); c.save(); c.translate(x, y0 + 30 * s * 0.1 * (1 - Math.min(1, a * 4)) - (a < .25 ? Math.sin(a / .25 * Math.PI) * 60 : 0)); c.scale(s, s); MOTO.wheel(c, 0, 0, ang, old, { isNew: false, sag: .9 }); c.restore(); }
+}
+
+/* ------------------------------------------------ moto roja (llegada) */
+function redPose(T) {
+  const x = T < 7.0 ? 1700 : lerp(1700, 810, E.outQuart(inv(7.0, 7.55, T)));
+  const roll = Math.abs(x - 1700) / (30 * 3.3);
+  const wh = .4 * E.outBack(inv(8.5, 8.85, T), 1.6) * (1 - E.inC(inv(9.45, 9.75, T)));
+  const brake = impulse(T, 7.38, 5) * (T > 7.38 ? 1 : 0);
+  return { x, y: GROUND, s: 3.3, flip: true, roll, wheelie: wh, pitch: .09 * brake };
+}
+function redEye(T) {
+  const e = { lid: .36, tilt: -.2, look: [.75, .03], bags: 0, brow: [-.2, .4], glow: .55 + .3 * pulse(T, 120, 4, 1), wide: 0, pupil: .44, happy: 0, smile: 0 };
+  if (T > 8.0) { const k = E.outC(inv(8.0, 8.4, T)); e.happy = .5 * k; e.smile = .7 * k; e.lid = lerp(.36, .1, k); }
+  if (T > 8.5 && T < 9.8) { e.glow = 1; e.wide = .3; e.look = [.6, -.5]; e.lid = .05; }
+  const b = blink(T, [7.9, 9.0]); if (b > 0) e.lid = Math.max(e.lid, b);
+  return e;
+}
+function drawRedMoto(c, T, lineup = false) {
+  let o;
+  if (lineup) {
+    const k = pop(T, 14.5, .4, 2.2), ph = T * 2;
+    o = { x: 250, y: 735 + (1 - clamp(k)) * -400, s: 2.2, flip: false, roll: 0, wheelie: 0, pitch: 0 };
+    o.skin = MOTO.SKINS.red; o.parts = { fw: 1, rw: 1, mir: 1, seat: 1, chain: 1 }; o.ang = { f: 0, r: 0 };
+    o.eye = { lid: 0, happy: 1, smile: 1, glow: .95, brow: [0, .8], look: [.5, 0], pupil: .46, bags: 0 }; const bk = blink(T, [18.6, 18.8]); if (bk > 0) { o.eye.lid = bk; o.eye.happy = 1 - bk; }
+    o.bob = Math.sin(ph) * -2; o.shine = null;
+    if (k <= 0) return;
+    shadowAt(c, o.x + 8, 735, 190 * 2.2, .4);
+    MOTO.draw(c, o); return;
+  }
+  if (T < 7.0 || T >= 10.0) return;
+  const P = redPose(T), A = T < 7.55 ? P.roll : (T > 8.5 && T < 9.75 ? P.roll + (T - 8.5) * 12 : P.roll);
+  o = { ...P, skin: MOTO.SKINS.red, parts: { fw: 1, rw: 1, mir: 1, seat: 1, chain: 1 }, ang: { f: A, r: A }, eye: redEye(T) };
+  o.shine = T > 7.6 && T < 8.1 ? lerp(-100, 110, E.inOutC(inv(7.6, 8.1, T))) : null;
+  o.sq = [1 + .05 * impulse(T, 7.4, 6), 1 - .06 * impulse(T, 7.4, 6)];
+  shadowAt(c, o.x + 10, GROUND, 190 * 3.3, .4);
+  MOTO.draw(c, o);
+  // humo de frenada en la rueda trasera (derecha, porque va hacia la izquierda)
+  puffs(c, T, 7.35, o.x + 115, GROUND - 30, 7, .9, 120, -80, 28, '#e5ebf5', 6);
+  if (T > 7.0 && T < 7.6) speedLines(c, T, GROUND - 330, GROUND - 40, -1, .45 * (1 - inv(7.3, 7.6, T)), 5, 14);
+  return o;
+}
+
+/* ------------------------------------------------ capas: mundo, textos, transiciones */
+function dayAt(T) {
+  const k = inv(2, 2.4, T) * (1 - inv(5.6, 6, T)), osc = .5 + .5 * Math.sin((T - 2) * TAU / 1.0); return lerp(.62, osc, k);   // la luz cambia más rápido justo en cada tiempo del compás
+}
+function clockAt(T) { const a = T < 2 ? T * .01 : T < 6 ? .02 + (T - 2) * 2.0 : .02 + 8; return .38 + a; }   // 2 vueltas/s → un pico visual por tiempo del compás
+function camera(T) {
+  const kz = E.inOutSine(inv(8.35, 9.5, T)) * (T < 9.775 ? 1 : 0), push = T < 6.8 ? .06 * E.inOutSine(inv(0, 6, T)) : 0, z = 1 + .18 * kz + push, cx = lerp(540, 690, kz), cy = 960;
+  const sh1 = shake(T, 16 * impulse(T, 7.05, 7), 1, 28), sh2 = shake(T, 8 * impulse(T, 7.5, 8), 2, 28), sh3 = shake(T, 5 * impulse(T, 13.0, 8), 4, 28), sh4 = shake(T, 8 * impulse(T, 14.0, 8), 6, 28);
+  const pz = 1 + .55 * (1 - E.outQuart(inv(0, .5, T)));       // crash zoom out: arranca encima del ojo y se abre al plano completo
+  return { z, cx, cy, pz, px: 735, py: 925, sx: sh1.x + sh2.x + sh3.x + sh4.x, sy: sh1.y + sh2.y + sh3.y + sh4.y };
+}
+function w2s(T, x, y) { const k = camera(T), X = W / 2 + k.sx + k.z * (x - k.cx), Y = H / 2 + k.sy + k.z * (y - k.cy); return [k.px + k.pz * (X - k.px), k.py + k.pz * (Y - k.py)]; }
+function drawWorld(c, T) {
+  const sceneA = T < 7.0, sceneB = T >= 7.0 && T < 14.0;
+  if (sceneA) garageBg(c, T, dayAt(T), clockAt(T), T >= 2 && T < 6);
+  else if (sceneB) brandBg(c, T, T >= 10 ? { c0: '#3aa6f5', c1: '#1272cc', c2: '#073a80' } : {});
+  else ctaBg(c, T);
+  // luz de ventana sobre la moto durante el time-lapse
+  let oldO = null;
+  if (T >= 10 && T < 14) drawFallingOld(c, T, { ...oldPose(T) });
+  if (T < 14) { oldO = drawOldMoto(c, T); }
+  if (T >= 10 && T < 14 && oldO) drawFlyingParts(c, T, oldO);
+  if (T >= 7 && T < 10) drawRedMoto(c, T);
+  if (T >= 13.45 && T < 14) { const [wx, wy] = L2W(oldO, 0, -60); ring(c, T, 13.5, wx, wy, 420, .5, '#bfe4ff', 12); }
+  // burst de brillos al terminar la pintura
+  if (oldO && T >= 13.0 && T < 13.9) { const [bx, by] = L2W(oldO, 0, -60); sparks(c, T, 13.2, bx, by, 22, .8, 420, 5, '#fff'); sparks(c, T, 13.3, bx, by, 14, .8, 300, 8, '#bfe4ff'); }
+  if (T >= 14) {
+    // lineup CTA: roja (izq.) y azul (der.) frente a frente
+    const k = pop(T, 14.5, .4, 2.2);
+    shadowAt(c, 730 + 8, 735, 190 * 2.2, .4 * clamp(k));
+    drawOldMotoCTA(c, T, k);
+    drawRedMoto(c, T, true);
+  }
+}
+function drawOldMotoCTA(c, T, k) {
+  const P = oldPose(T), ph = T * 2, y = P.y + (1 - clamp(k)) * -420;
+  if (k <= 0) return;
+  const eye = { lid: 0, bags: 0, happy: 1, smile: 1, glow: .95, look: [.5, 0], pupil: .46, brow: [0, .8] }; const bk = blink(T, [18.0, 18.2]); if (bk > 0) { eye.lid = bk; eye.happy = 1 - bk; }
+  MOTO.draw(c, { ...P, y, skin: MOTO.SKINS.blue, parts: { fw: 1, rw: 1, mir: 1, seat: 1, chain: 1 }, ang: { f: 0, r: 0 }, sq: [1, 1], bob: Math.sin(ph + 1) * -2, eye });
+}
+
+/* ------------------------------------------------ textos */
+function slamTxt(c, str, x, y, size, t, t0, o = {}) {
+  const k = pop(t, t0, .26, 3), a = clamp(inv(t0, t0 + .06, t)); if (a <= 0) return;
+  c.save(); c.globalAlpha = a; c.translate(x, y); c.scale(lerp(1.35, 1, clamp(k)) * (k > 1 ? 1 : 1), lerp(1.35, 1, clamp(k))); c.rotate(o.rot || 0);
+  txt(c, str, 0, 0, { size, fill: o.fill || '#fff', stroke: o.stroke, strokeW: o.strokeW, shadow: o.shadow || 'rgba(2,8,24,.55)', shadowBlur: size * .2, shadowY: size * .06, maxW: o.maxW, tracking: o.tracking, role: 'key' });
+  c.restore();
+}
+function overlay(c, T) {
+  // ---------- GANCHO 0–2.4
+  if (T < 2.1) {
+    const out = E.inC(inv(1.85, 2.05, T)), y = -out * 50, a = 1 - out;
+    c.save(); c.translate(0, y); c.globalAlpha = a;
+    const k0 = 1 + .16 * impulse(T, 0, 9), k1 = 1 + .12 * impulse(T, .25, 9);
+    c.save(); c.translate(CX, 318); c.scale(k0, k0); txt(c, 'TU MOTO', 0, 0, { size: 124, fill: '#fff', shadow: 'rgba(2,8,24,.55)', role: 'key' }); c.restore();
+    c.save(); c.translate(CX, 456); c.scale(k1, k1); txt(c, 'CUANDO DICES:', 0, 0, { size: 124, fill: '#fff', shadow: 'rgba(2,8,24,.55)', maxW: 860, role: 'key' }); c.restore();
+    c.restore();
+  }
+  if (T >= .15 && T < 2.45) {            // burbuja del dueño: se "escribe" rápido, vive hasta 2.4
+    const q = '“Ahorita la arreglo”', n = Math.floor(clamp((T - .15) / .35) * q.length), ex = inv(2.25, 2.42, T);
+    bubble(c, q, CX, 596, { size: 50, bg: C.blue, fg: '#fff', tail: [330, -92], tx: 250, sc: clamp(pop(T, .15, .2, 2)) * (1 - E.inC(ex) * .5), alpha: 1 - ex, shown: q.slice(0, n) });
+  }
+  // ---------- ABANDONO 2–6
+  if (T >= 2 && T < 6.75) {
+    const out = E.inC(inv(6.5, 6.7, T));
+    c.save(); c.globalAlpha = 1 - out;
+    const k = pop(T, 2.0, .3, 3);
+    c.save(); c.translate(CX, 384); c.scale(lerp(1.4, 1, clamp(k)), lerp(1.4, 1, clamp(k))); txt(c, 'AHORITA', 0, 0, { size: 190, fill: '#fff', shadow: 'rgba(2,8,24,.55)', role: 'key' }); c.restore();
+    const ct = [[2.5, '1 MES'], [3.5, '6 MESES'], [4.5, '1 AÑO'], [5.5, '3 AÑOS']];
+    ct.forEach(([t0, s], i) => { const t1 = i < 3 ? ct[i + 1][0] + .12 : 6.75; if (T >= t0 && T < t1) { const kk = pop(T, t0, .24, 3); pill(c, s, CX, 536, { size: 112, bg: C.red, fg: '#fff', sc: lerp(1.5, 1, clamp(kk)), rot: -.03, alpha: clamp(inv(t0, t0 + .05, T)) * (1 - inv(t1 - .12, t1, T)) }); } });
+    c.restore();
+  }
+  // subtítulo de la moto: …ahorita.
+  if (T >= 5.2 && T < 6.5) { const a = win(T, 5.2, 6.5, .12, .2), o = oldPose(T); const tx = w2s(T, L2W(o, 55, 0)[0], 0)[0] - CX; bubble(c, '…ahorita.', CX, 1420, { size: 56, tail: [tx, -100], tx, sc: lerp(.6, 1, E.outBack(clamp(inv(5.2, 5.4, T)), 2)), alpha: a }); }
+  // ---------- LLEGADA 6–10
+  if (T >= 7.5 && T < 10.0) {
+    const out = E.inC(inv(9.6, 9.8, T)); c.save(); c.translate(0, -out * 50); c.globalAlpha = 1 - out;
+    slamTxt(c, 'SÍ HAY', CX, 312, 92, T, 7.5, { fill: '#fff' });
+    const k = pop(T, 7.55, .28, 3); c.save(); c.globalAlpha = clamp(inv(7.55, 7.6, T)); pill(c, 'MOTOS', CX, 462, { size: 190, bg: C.red, fg: '#fff', sc: lerp(1.4, 1, clamp(k)), rot: -.03 }); c.restore();
+    c.restore();
+  }
+  if (T >= 8.0 && T < 9.4) { const a = win(T, 8.0, 9.4, .1, .2), o = oldPose(T); const bx = CX - 120, tx = w2s(T, L2W(o, 55, 0)[0], 0)[0] - bx; bubble(c, '¿Y ella?', bx, 1420, { size: 60, tail: [tx, -100], tx, sc: lerp(.6, 1, E.outBack(clamp(inv(8.0, 8.2, T)), 2)), alpha: a }); }
+  // ---------- REFACCIONES 10–14
+  if (T >= 10.25 && T < 13.95) {
+    const out = E.inC(inv(13.55, 13.8, T)); c.save(); c.translate(0, -out * 50); c.globalAlpha = 1 - out;
+    slamTxt(c, 'SÍ HAY', CX, 312, 92, T, 10.25, { fill: '#fff' });
+    const k = pop(T, 10.3, .28, 3); c.save(); c.globalAlpha = clamp(inv(10.3, 10.35, T)); pill(c, 'REFACCIONES', CX, 462, { size: 150, bg: '#fff', fg: C.red, sc: lerp(1.4, 1, clamp(k)), rot: .025, shadow: 'rgba(0,0,0,0)' }); c.restore();
+    c.restore();
+  }
+  // ---------- CIERRE 14–20   (logo 320 · motos 735 · chips 830 · LLÁMANOS AHORITA 1000 · tel 1240 · horario/dirección 1335–1445)
+  if (T >= 14.0) {
+    const lk = pop(T, 14.05, .5, 2.2);
+    drawLogo(c, CX, 322, 780, { sc: lerp(1.5, 1, clamp(lk)), alpha: clamp(inv(14.0, 14.12, T)), shine: inv(14.35, 15.0, T) });
+    const kk = pop(T, 15.2, .3, 2.6);
+    if (T >= 15.2) { c.save(); c.globalAlpha = clamp(inv(15.2, 15.28, T));
+      pill(c, 'MOTOS', CX - 190, 836, { size: 72, bg: C.red, fg: '#fff', sc: lerp(1.3, 1, clamp(kk)) });
+      pill(c, 'REFACCIONES', CX + 150, 836, { size: 72, bg: '#fff', fg: C.red, sc: lerp(1.3, 1, clamp(kk)), shadow: 'rgba(0,0,0,0)' }); c.restore(); }
+    if (T >= 15.8) { const a = fadeIn(T, 15.8, 16.1), dy = (1 - a) * 24; c.save(); c.globalAlpha = a; c.translate(0, dy);
+      txt(c, CONFIG.hours, CX, 1374, { size: 52, font: FT, weight: 800, fill: '#fff', maxW: 840, shadow: 'rgba(0,0,0,.5)', role: 'key' });
+      txt(c, CONFIG.addr1, CX, 1428, { size: 46, font: FT, weight: 600, fill: '#e6eefb', maxW: 840, shadow: 'rgba(0,0,0,.5)', role: 'key' });
+      txt(c, CONFIG.addr2, CX, 1478, { size: 46, font: FT, weight: 600, fill: '#e6eefb', maxW: 840, shadow: 'rgba(0,0,0,.5)', role: 'key' }); c.restore(); }
+    if (T >= 16.5) { const k2 = pop(T, 16.5, .3, 3); c.save(); c.globalAlpha = clamp(inv(16.5, 16.55, T)); c.translate(CX, 1040); c.scale(lerp(1.3, 1, clamp(k2)), lerp(1.3, 1, clamp(k2)));
+      txt(c, 'LLÁMANOS', 0, -46, { size: 92, fill: '#fff', shadow: 'rgba(2,8,24,.55)', role: 'key' });
+      pill(c, 'AHORITA', 0, 52, { size: 132, bg: C.red, fg: '#fff', rot: -.02 }); c.restore(); }
+    for (const [tt, xx, yy] of [[17.5, 130, 1190], [18.1, 840, 1220], [18.7, 480, 1170]]) sparks(c, T, tt, xx, yy, 5, .6, 70, Math.round(tt * 10), '#fff6c8');
+    if (T >= 17.0) { const k3 = pop(T, 17.0, .3, 3); c.save(); c.globalAlpha = clamp(inv(17.0, 17.05, T)); c.translate(CX, 1288); c.scale(lerp(1.25, 1, clamp(k3)), lerp(1.25, 1, clamp(k3)));
+      txt(c, CONFIG.phone, 0, 0, { size: 140, fill: C.yellow, shadow: 'rgba(2,8,24,.6)', maxW: 840, role: 'key' }); c.restore(); }
+  }
+}
+
+/* ------------------------------------------------ barridos de marca (rojo · blanco · azul) */
+function wipeStripes(c, t0, T) {
+  const p = clamp((T - t0) / WD); if (p <= 0 || p >= 1) return;
+  const L = 1900, lead = (W + 300) - E.inOutC(p) * (W + L + 600), sk = .34;
+  const band = (x0, w, col) => { c.fillStyle = col; c.beginPath(); c.moveTo(x0 + sk * H / 2, 0); c.lineTo(x0 + w + sk * H / 2, 0); c.lineTo(x0 + w - sk * H / 2, H); c.lineTo(x0 - sk * H / 2, H); c.closePath(); c.fill(); };
+  c.save(); band(lead, 140, C.blue); band(lead + 140, 90, '#fff'); band(lead + 230, L - 460, C.red); band(lead + L - 230, 90, '#fff'); band(lead + L - 140, 140, C.blue); c.restore();
+}
+function seam(c, T) {
+  // empuje al cuadro 0: lo de la derecha entra, lo actual sale a la izquierda
+  const p = Math.pow(clamp(inv(19.6, 19.95, T)), 3), A = off('sA'), B = off('sB');
+  frame(A.getContext('2d'), Math.min(T, 19.999), true); frame(B.getContext('2d'), 0, true);
+  c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, W, H);
+  const x = p * W, bl = 30 * Math.sin(Math.PI * p); for (let i = 0; i < 4; i++) { c.globalAlpha = i === 0 ? 1 : .2 * Math.min(1, bl / 8); c.drawImage(A, -x - i * bl, 0); c.drawImage(B, W - x + i * bl, 0); } c.globalAlpha = 1;
+}
+const _bufs = {}; function off(k) { let b = _bufs[k]; if (!b) { b = _bufs[k] = document.createElement('canvas'); b.width = W; b.height = H; } return b; }
+
+/* ------------------------------------------------ composición de un cuadro */
+function frame(c, T, noPost) {
+  c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, W, H);
+  const cam = camera(T);
+  c.save(); c.translate(cam.px, cam.py); c.scale(cam.pz, cam.pz); c.translate(-cam.px, -cam.py);
+  c.translate(W / 2 + cam.sx, H / 2 + cam.sy); c.scale(cam.z, cam.z); c.translate(-cam.cx, -cam.cy);
+  drawWorld(c, T);
+  c.restore();
+  overlay(c, T);
+  for (const w of WIPES) wipeStripes(c, w, T);
+  // destellos de impacto (≤3/s)
+  const fl = Math.max(.5 * impulse(T, 7.0, 22) * (T >= 7 ? 1 : 0), .25 * impulse(T, 13.0, 20) * (T >= 13.0 ? 1 : 0));
+  if (fl > .02 && !STAGE.RM) { c.fillStyle = `rgba(255,255,255,${fl})`; c.fillRect(0, 0, W, H); }
+  grain(c, T, T < 7 ? .42 : .3);
+}
+
+/* ------------------------------------------------ partitura (todo sintetizado) */
+const SCORE = Score({ bpm: CONFIG.bpm }, ({ at, sc, steps, drums, groove, motif, BEAT, STEP }) => {
+  // — GANCHO: cuarto en silencio, tic-tac y "tecleo" de la burbuja
+  sc('hook', 0, (G, w) => { ambience(G, w, 2.2, 360, .03, 0); stamp(G, w, .5); boom(G, w, .3); });
+  steps(0, 2.0, (t, s) => { if (s % 4 === 0) at(t + .01, (G, w) => blip(G, w, 96 + (s % 8 === 0 ? 0 : -5), .035, .09, .1, .25)); });
+  const typed = 'Ahorita la arreglo'; for (let i = 0; i < typed.length; i++) sc('hook', .3 + i * (.8 / typed.length), (G, w) => typeTick(G, w, i, .085));
+  sc('hook', 1.55, (G, w) => { noiseV(G, w, .7, { ft: 'lowpass', f: 1500, fTo: 260, vol: .14, d: .3, s: .2, rev: .2, pan: -.4 }); downer(G, w, .6, .1); });
+  sc('hook', 1.5, (G, w) => whistle(G, w, 420, 180, .5, .04, .2));
+  [0, .5, 1.0].forEach(t => sc('hook', t, (G, w) => noiseV(G, w, .16, { ft: 'lowpass', f: 900, fTo: 200, vol: .12, d: .08, s: .2, pan: -.3 })));
+  // — ABANDONO: tic-tac acelerando, sellos, pájaro, tape-stop
+  sc('lapse', 0, (G, w) => { stamp(G, w, .55); boom(G, w, .5); ambience(G, w, 4, 300, .024, 0); });
+  [0, 1, 2, 3].forEach(i => sc('lapse', i, (G, w) => whoosh(G, w, .9, .07, -.5, .5, 220, 900)));
+  let tt = 0, gap = .25; while (tt < 3.9) { const t = tt; sc('lapse', t, (G, w) => blip(G, w, 100 + ((Math.round(t * 4)) % 2 ? 0 : -4), .03, .075, 0, .25)); tt += gap; gap = Math.max(.07, gap * .93); }
+  [.5, 1.5, 2.5, 3.5].forEach((t, i) => sc('lapse', t, (G, w) => { stamp(G, w, .42); noiseV(G, w, .08, { ft: 'bandpass', f: 1400 + i * 300, vol: .11 }); }));
+  sc('lapse', 1.4, (G, w) => boing(G, w, .1, .2));                                  // brota la planta
+  [2.0, 2.45].forEach(t => sc('lapse', t, (G, w) => { tone(G, w, 3100, .07, { type: 'sine', vol: .06, slide: 4, rev: .15 }); tone(G, w + .09, 3500, .07, { type: 'sine', vol: .055, slide: -3, rev: .15 }); }));
+  sc('lapse', 3.1, (G, w) => { downer(G, w, .45, .1); tapeStop(G, w, [57, 60, 64]); });
+  sc('lapse', 1.2, (G, w) => riser(G, w, 2.7, .06));
+  // — LLEGADA: silencio + motor lejano → barrido → caída del beat
+  sc('arrive', .4, (G, w) => engine(G, w, .6, t => ({ rpm: lerp(1.6, 4.6, E.inQ(t / .6)), gain: lerp(.15, .9, t / .6), pan: .85 - t / .6 * .4 })));
+  sc('arrive', .55, (G, w) => riser(G, w, .45, .11));
+  sc('arrive', .775, (G, w) => whoosh(G, w, .5, .2, .8, -.8, 300, 3200));
+  sc('arrive', 1.0, (G, w) => { boom(G, w, .75); crash(G, w, .2); engine(G, w, .6, t => ({ rpm: lerp(7.5, 3, E.outC(t / .6)), gain: lerp(1.2, .1, t / .6), pan: lerp(.9, -.1, E.outQuart(t / .55)) }), .12); noiseV(G, w + .22, .4, { ft: 'bandpass', f: 3200, fTo: 700, q: 2.5, vol: .12, d: .2, s: .3, rev: .2 }); });
+  drums(sc('arrive', 1.0), sc('cta', 5.5), { kick: 'x...x...x...x...', clap: '....X.......X...', hat: 'x.x.x.x.x.x.x.xo' }, { swing: .02, vol: 1.0 });
+  groove(sc('arrive', 1.0), sc('cta', 5.5), ['Am', 'F', 'C', 'G'], 2, { arp: false, bassVol: .24, padVol: .034 });
+  { const prog = ['Am', 'F', 'C', 'G'], t0 = sc('arrive', 1.0);       // stabs sincopados en medios (se oyen en bocinas chicas)
+    steps(t0, sc('cta', 5.5), (t, s) => { const st = s % 16; if (![3, 6, 10, 14].includes(st)) return; const ch = CH[prog[Math.floor((t - t0) / 2) % 4]];
+      at(t, (G, w) => epiano(G, w, ch.map(m => m + 12), STEP * 2.2, .06)); }); }
+  motif([[0, 2, 69], [3, 1, 72], [4, 2, 76], [8, 2, 74], [11, 1, 72], [12, 4, 69]], sc('arrive', 1.0), sc('fix', 4), { tr: 0, inst: (G, w, m, d) => pluck(G, w, m + 12, d + .15, .09, .2), stretch: 1.0 });
+  sc('arrive', 1.5, (G, w) => { stamp(G, w, .4); shing(G, w, -.1); });
+  sc('arrive', 2.0, (G, w) => blip(G, w, 84, .09, .05, 0, .5));
+  sc('arrive', 2.5, (G, w) => engine(G, w, .8, t => ({ rpm: lerp(3, 8.5, E.inQ(t / .8)), gain: lerp(.4, 1, t / .8), pan: .1 }), .1));
+  sc('arrive', 3.3, (G, w) => riser(G, w, .45, .1));
+  sc('arrive', 3.775, (G, w) => whoosh(G, w, .5, .2, .8, -.8, 300, 3200));
+  // — REFACCIONES: cada pieza encaja con un clic y una nota ascendente (Do mayor)
+  sc('fix', .25, (G, w) => { stamp(G, w, .35); shing(G, w, .1); });
+  [[.5, 72], [1.0, 76], [1.5, 79], [2.0, 84], [2.5, 88]].forEach(([t, m]) => sc('fix', t, (G, w) => { clank(G, w, .08); pluck(G, w, m, .35, .13, .3); kick(G, w, .35); noiseV(G, w, .04, { ft: 'bandpass', f: 2800, vol: .08 }); }));
+  [.1, .6, 1.1, 1.6, 2.1].forEach((t, i) => sc('fix', t, (G, w) => whoosh(G, w, .45, .08, i % 2 ? -.6 : .6, i % 2 ? .3 : -.3, 300, 2200)));
+  sc('fix', 2.4, (G, w) => riser(G, w, .6, .12));
+  sc('fix', 3.0, (G, w) => { shing(G, w, 0); powerUp(G, w, .05); crash(G, w, .12); });
+  sc('fix', 3.5, (G, w) => { [72, 76, 79, 84].forEach((m, i) => bell(G, w + i * .03, m, 1.2, .045, (i - 1.5) * .3)); coin(G, w, .05); });
+  sc('fix', 3.775, (G, w) => whoosh(G, w, .5, .2, .8, -.8, 300, 3200));
+  // — CIERRE: sting de logo, sellos, teléfono tecleado, empuje de bucle
+  sc('cta', 0, (G, w) => { boom(G, w, .8); crash(G, w, .22); shing(G, w, 0); });
+  sc('cta', .5, (G, w) => { whoosh(G, w, .4, .1, -.5, .5, 400, 2500); stamp(G, w, .3); });
+  sc('cta', 1.2, (G, w) => { stamp(G, w, .3); clank(G, w, .04); });
+  sc('cta', 2.5, (G, w) => { stamp(G, w, .45); shing(G, w, .1); });
+  const digs = CONFIG.phone.replace(/ /g, ''); for (let i = 0; i < digs.length; i++) sc('cta', 3.0 + i * .045, (G, w) => blip(G, w, 79 + (i % 4) * 2, .04, .035, (i % 5 - 2) * .2, .5));
+  sc('cta', 3.0, (G, w) => { stamp(G, w, .45); shing(G, w, -.1); });
+  sc('cta', 3.8, (G, w) => bell(G, w, 84, 1.4, .04, .2));
+  sc('cta', 5.45, (G, w) => whoosh(G, w, .55, .22, .8, -.8, 300, 3400));
+});
+
+/* ------------------------------------------------ arranque */
+STAGE.run({
+  style: 'vector', canvas: cv, format: '9:16', sizes: { '9:16': [1080, 1920] }, bpm: CONFIG.bpm, audio: SCORE, loop: true,
+  scenes: [{ id: 'hook', d: 2 }, { id: 'lapse', d: 4 }, { id: 'arrive', d: 4 }, { id: 'fix', d: 4 }, { id: 'cta', d: 6 }],
+  prepare: async () => { await Promise.all(['400 40px Anton', '800 40px Inter', '600 40px Inter'].map(f => document.fonts.load(f, 'AHORITA ¿Ñá'))); grain(ctx, 0); },
+  draw: (T) => { if (T >= 19.6) seam(ctx, T); else frame(ctx, T); },
+});
+</script>
+</body>
+</html>

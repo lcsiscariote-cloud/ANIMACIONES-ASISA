@@ -16,7 +16,7 @@
 ## Para publicar
 **Descripción (pegar tal cual):**
 > Tu moto cuando dices "ahorita la arreglo" 😅 ¿Cuántos años lleva tu "ahorita"? Cuéntanos 👇 Etiqueta al que siempre dice ahorita.
-> 📍 C. 16 de Septiembre 631, Obregón, León, Gto. · ☎️ 477 181 78 23 · Lun–Sáb 9 am–6 pm
+> 📍 C. 16 de Septiembre 631, Obregón, León, Gto. · ☎️ +52 1 477 122 3217 · Lun–Sáb 9 am–6 pm
 
 **Hashtags (5):** `#motos #refacciones #leongto #motociclistas #humormotero`
 
@@ -35,7 +35,7 @@
 | 2.0–6.0 | **AHORITA** + contador 1 MES · 6 MESES · 1 AÑO · 3 AÑOS. Time-lapse: día/noche, reloj, polvo, llanta baja, planta en el escape, nido con huevos. Subtítulo: “…ahorita.” |
 | 6.0–10.0 | Silencio, ojos como platos, motor lejano. Barrido rojo-blanco-azul y entra la moto roja derrapando. **SÍ HAY MOTOS.** “¿Y ella?”. Caballito. |
 | 10.0–14.0 | **SÍ HAY REFACCIONES.** Piezas nuevas encajan en tiempo fuerte (ruedas, espejo, asiento, cadena). Barrido de brillo: la moto vieja queda azul de marca. |
-| 14.0–20.0 | Logo, las dos motos frente a frente, **MOTOS · REFACCIONES**, **LLÁMANOS AHORITA**, 477 181 78 23, horario y dirección. Empuje que vuelve al cuadro 0. |
+| 14.0–20.0 | Logo, las dos motos frente a frente, **MOTOS · REFACCIONES**, **LLÁMANOS AHORITA**, +52 1 477 122 3217, horario y dirección. Empuje que vuelve al cuadro 0. |
 
 ## Qué medir (volver a las 48 h con TikTok Studio)
 Vistas · retención a 2 s y 6 s · tiempo medio de reproducción · % que lo ve completo · repeticiones · comentarios · compartidos · visitas al perfil.
